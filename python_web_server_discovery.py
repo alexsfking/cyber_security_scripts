@@ -3,69 +3,101 @@ import nmap
 import os
 import sys
 import time
+import select
 
 '''
-The shebang line #!/usr/bin/env/python specifies the interpreter to be used to
-run the script (in this case, the python command).
+Shebang:
+#!/usr/bin/env/python
 
-The necessary imports are made: nmap, os, sys, and time.
+    This line is called a shebang and specifies the interpreter to be used when
+    executing the script. In this case, it indicates that the script should be run
+    using the Python interpreter.
 
-The script defines a class called Scanner which is used for scanning and
-enumerating devices.
+Import Statements:
+import nmap
+import os
+import sys
+import time
+import select
 
-In the __init__ method of the Scanner class, an instance of nmap.PortScanner is
-created. If an error occurs during the creation of the PortScanner object, an
-appropriate error message is printed, and the script exits.
+    These statements import the necessary libraries/modules for the script. The nmap
+    library is used for network scanning, os and sys for system-related operations,
+    and time and select for timing and input handling, respectively.
 
-The scan_for_devices method of the Scanner class takes an IP range as input and
-uses nmap to scan for devices in that range. The -sn argument in the scan method
-indicates a ping scan, which determines if hosts are online. The IP addresses of
-available hosts are stored in the available_hosts set.
+Class Definition: Scanner
 
-The enumerate_devices method iterates over the available hosts and performs
-various checks on each host. First, it checks if the host is reachable by
-pinging it. If the host is reachable, it performs a detailed scan using nmap
-with specific arguments (-p 1-65535
---script=http-title,http-server-header,http-methods,http-headers,http-enum) to
-gather information about the web server running on the host. The script then
-extracts various data such as headers, title, server header, methods, and
-enumeration results if available. Finally, the method outputs the results to
-both the standard output and a file named "pwsd_results.txt".
+    This class encapsulates the functionality of the web server scanner. It contains
+    methods for initializing the scanner, scanning for devices in a given IP range,
+    enumerating devices for web servers, extracting script data, and outputting
+    results to file or stdout.
 
-The extract_script_data method extracts relevant data from the script object
-obtained from the nmap scan. If the script data is available, it returns the
-extracted information; otherwise, it returns None.
+Scanner Initialization: __init__ method
 
-The output_http_results_to_file method writes the HTTP scan results to the
-"pwsd_results.txt" file. It formats the results and writes them to the file
-using the write method.
+    This method is called when creating a new instance of the Scanner class. It
+    initializes the available_hosts attribute as an empty set and attempts to create
+    an instance of nmap.PortScanner() for network scanning. If an error occurs
+    during the creation of the PortScanner object, an error message is printed, and
+    the script exits.
 
-The output_http_results_to_stdout method prints the HTTP scan results to the
-standard output. It formats the results and prints them using the print
-function.
+Scanning for Devices: scan_for_devices method
 
-The menu function displays a menu for the user to interact with. It prints the
-menu options and takes user input. The chosen option is returned as a string.
+    This method performs a network scan on the given target_ip_range using the nmap
+    library. The -sn argument specifies a "ping scan" mode, which checks if the
+    hosts are up without performing port scanning. The scan results are stored in
+    the scan_results variable.
 
-The scan_for_devices function prompts the user to enter an IP range to scan for
-devices. It takes the input, calls the scan_for_devices method of the Scanner
-object, and performs the scan.
+Enumerating Devices: enumerate_devices method
 
-The enumerate_devices function calls the enumerate_devices method of the Scanner
-object to enumerate the detected devices and gather information about their web
-servers.
+    This method iterates over the set of available_hosts obtained from the previous
+    scan. It performs additional operations on each host, such as sending a ping
+    request to check if the host is up, scanning for open ports, extracting script
+    data related to web servers, and outputting the results.
 
-In the main block, an instance of the Scanner class is created. The file
-"pwsd_results.txt" is cleared.
+Outputting Results: output_http_results_to_file and
+output_http_results_to_stdout methods
 
-The main loop runs until the user chooses the exit option (0). Inside the loop,
-the menu is displayed, and based on the user's choice, the corresponding
-function is called.
+    These methods write the HTTP-related scan results to a file (pwsd_results.txt)
+    or print them to the console (stdout).
 
-If a keyboard interrupt (Ctrl+C) is detected, a message is printed, and the
-script exits gracefully.
+Extract data: extract_script_data method
 
-Finally, a "Goodbye!" message is printed to indicate the end of the script.
+    The extract_script_data method is responsible for extracting specific script
+    data related to web servers from the scan results. It takes the host IP address
+    and port number as parameters.
+
+    The method first retrieves the script data from the scan results for the
+    specified host and port. If there is script data available, it extracts specific
+    attributes such as http-headers, http-title, http-server-header, http-methods,
+    and http-enum using the get method.
+
+    Finally, the extracted script data is returned as a tuple (headers, title,
+    server_header, methods, enum). If no script data is found, None is returned.
+
+User Interaction: menu function
+
+    The menu function displays a menu for the user to interact with. It prints the
+    menu options and takes user input. It takes an instance of the Scanner class as
+    an argument and returns the user's choice as a string.
+
+Input Functions: scan_for_devices and enumerate_devices
+
+    These functions interact with the user to obtain input for scanning IP ranges
+    and enumerating devices, respectively. They call the corresponding methods of
+    the Scanner class.
+
+Main:
+
+    In the main block, an instance of the Scanner class is created. The file
+    "pwsd_results.txt" is cleared.
+
+    The main loop runs until the user chooses the exit option (0). Inside the loop,
+    the menu is displayed, and based on the user's choice, the corresponding
+    function is called.
+
+    If a keyboard interrupt (Ctrl+C) is detected, a message is printed, and the
+    script exits gracefully.
+
+    Finally, a "Goodbye!" message is printed to indicate the end of the script.
 
 '''
 
@@ -81,24 +113,31 @@ class Scanner:
             print("Unexpected error:", sys.exc_info()[0])
             sys.exit(1)
 
-    def scan_for_devices(self,target_ip_range:str):
-        #nmap -sn 192.168.159.1-254
-        #nmap -sn 192.168.159.137
-        self.nm.scan(target_ip_range, arguments='-sn')
-        for host in self.nm.all_hosts():
-            self.available_hosts.add(host)
+    def scan_for_devices(self, target_ip_range: str):
+        scan_results = self.nm.scan(target_ip_range, arguments='-sn')
+        print(scan_results)
+        if 'scan' in scan_results:
+            for host, data in scan_results['scan'].items():
+                if 'status' in data and data['status']['state'] == 'up':
+                    if 'reason' in data['status'] and data['status']['reason'] != 'arp-response':
+                        self.available_hosts.add(host)
+
 
     def enumerate_devices(self):
-        #nmap 192.168.159.137 -p 1-65535 --script=http-title,http-server-header,http-methods,http-headers,http-enum
+        #nmap 192.168.159.137 -p 1-65535 -T5 --script=http-title,http-server-header,http-methods,http-headers,http-enum
         for host in self.available_hosts:
             print("Checking: ", host)
             with open('pwsd_results.txt', 'a') as f:
                 f.write("Checking: " + str(host) + "\n")
             response = os.system("ping -c 1 " + host + " > /dev/null 2>&1")
             if response == 0:
-                self.nm.scan(hosts=host, arguments='-p 1-65535 --script=http-title,http-server-header,http-methods,http-headers,http-enum')
+                start_time:float = time.time()
+                try:
+                    self.nm.scan(hosts=str(host), arguments='-p 1-65535 -T5 --script=http-title,http-server-header,http-methods,http-headers,http-enum',sudo=True,timeout=160)
+                except Exception as e:
+                    print(f"An error occurred while scanning host {host}: {str(e)}")
+                    continue
                 if 'tcp' in self.nm[host]:
-                    #print(f"Open ports for {host}:")
                     for port in self.nm[host]['tcp']:
                         headers,title,server_header,methods,enum=None,None,None,None,None
                         if self.nm[host]['tcp'][port]['state'] == 'open':
@@ -108,6 +147,22 @@ class Scanner:
                             if self.nm[host]['tcp'][port]['name'] == 'http' or headers or title or server_header or methods:
                                 self.output_http_results_to_stdout(host,port,headers,title,server_header,methods,enum)
                                 self.output_http_results_to_file(host,port,headers,title,server_header,methods,enum)
+
+                        elapsed_time = time.time() - start_time
+                        if elapsed_time > 300:
+                            print("Skipping host", host, "due to timeout.")
+                            f.write("Skipping host " + str(host) + " due to timeout." + "\n")
+                            break
+
+                        if sys.stdin in select.select([sys.stdin], [], [], 0)[0]:
+                            if sys.stdin.readline().strip() == '':
+                                print("Skipping host", host, "due to user input.")
+                                f.write("Skipping host " + str(host) + " due to user input." + "\n")
+                                break
+            
+        self.available_hosts.clear()
+        print("Finished.")
+        f.write("Finished.\n")
 
     def extract_script_data(self, host:str, port:int):
         script = self.nm[host]['tcp'][port].get('script')
